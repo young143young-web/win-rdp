@@ -1,0 +1,77 @@
+name: Windows Remote Debug Session
+
+on:
+  workflow_dispatch:
+
+jobs:
+  remote-access:
+    runs-on: windows-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Connect to Tailscale Network
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          hostname: win-runner-${{ github.run_id }}
+
+      - name: Configure RDP & Network Security
+        shell: powershell
+        run: |
+          # Enable Remote Desktop Connections
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0
+          
+          # Enable standard Windows Firewall rules for RDP
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Add an extra layer of firewall rule for Tailscale access
+          New-NetFirewallRule -DisplayName "Allow-RDP-Tailscale" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow
+          
+          # Restart TermService to apply registry changes
+          Restart-Service -Name TermService -Force
+
+      - name: Setup Administrator Account
+        shell: powershell
+        run: |
+          # Generate a strong, unique password using GUID and special characters
+          $UniquePass = [Guid]::NewGuid().ToString() + "A1!x"
+          $SecurePassword = ConvertTo-SecureString $UniquePass -AsPlainText -Force
+          
+          # Create the local user
+          New-LocalUser -Name "RunnerAdmin" -Password $SecurePassword -FullName "Remote Debug User" -AccountNeverExpires
+          
+          # Assign Admin and RDP rights
+          Add-LocalGroupMember -Group "Administrators" -Member "RunnerAdmin"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RunnerAdmin"
+          
+          # Save credentials to environment variables for the next step
+          echo "RUNNER_PASS=$UniquePass" >> $env:GITHUB_ENV
+
+      - name: Install All Essential Software
+        shell: powershell
+        run: |
+          Write-Host "Installing standard tools via Chocolatey..."
+          # Installing Browsers, Utilities, Dev Tools, and Media Player
+          choco install googlechrome firefox 7zip winrar notepadplusplus vscode vlc python git -y --no-progress
+          Write-Host "Software installation completed!"
+
+      - name: Display Connection Details & Keep Alive
+        shell: powershell
+        run: |
+          # Fetch the assigned Tailscale IP
+          $AssignedIP = tailscale ip -4
+          
+          Write-Host "========================================="
+          Write-Host "           RDP SESSION ACTIVE            "
+          Write-Host "========================================="
+          Write-Host "IP Address : $AssignedIP"
+          Write-Host "Username   : RunnerAdmin"
+          Write-Host "Password   : $env:RUNNER_PASS"
+          Write-Host "========================================="
+          
+          # Keep the workflow running so the session doesn't close
+          Write-Host "Session is running. Cancel the workflow manually to stop."
+          while ($true) {
+              Start-Sleep -Seconds 600
+          }
