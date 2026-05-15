@@ -9,12 +9,18 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Connect to Tailscale Network
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          hostname: win-runner-${{ github.run_id }}
-
+      - name: Install & Connect Tailscale
+        shell: powershell
+        run: |
+          Write-Host "Downloading Tailscale..."
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -OutFile "tailscale.msi"
+          
+          Write-Host "Installing Tailscale..."
+          Start-Process msiexec.exe -ArgumentList "/i tailscale.msi /quiet /norestart" -Wait
+          
+          Write-Host "Connecting to Tailscale..."
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win-runner-$env:GITHUB_RUN_ID
+          
       - name: Configure RDP & Network Security
         shell: powershell
         run: |
@@ -60,7 +66,7 @@ jobs:
         shell: powershell
         run: |
           # Fetch the assigned Tailscale IP
-          $AssignedIP = tailscale ip -4
+          $AssignedIP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           
           Write-Host "========================================="
           Write-Host "           RDP SESSION ACTIVE            "
