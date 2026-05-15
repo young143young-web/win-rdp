@@ -12,13 +12,12 @@ jobs:
       - name: Install & Connect Tailscale
         shell: powershell
         run: |
-          Write-Host "Downloading Tailscale..."
-          # Fixed the download link here
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile "tailscale.msi"
+          Write-Host "Installing Tailscale via Chocolatey..."
+          # Ye command apne aap latest Tailscale install kar degi bina kisi direct link ke
+          choco install tailscale -y --no-progress
           
-          Write-Host "Installing Tailscale..."
-          Start-Process msiexec.exe -ArgumentList "/i tailscale.msi /quiet /norestart" -Wait
+          # Service start hone ke liye 5 second ka wait
+          Start-Sleep -Seconds 5
           
           Write-Host "Connecting to Tailscale..."
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win-runner-$env:GITHUB_RUN_ID
